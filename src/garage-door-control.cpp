@@ -17,6 +17,7 @@ void loop(void);
 
 #define MQTT_VERSION MQTT_VERSION_3_1_1
 #define SWITCH_DURATION 2000
+#define MAX_SRV_CLIENTS 1
 
 const char* ssid = _WIFI_SSID_;
 const char* password = _WIFI_PASS_;
@@ -52,6 +53,9 @@ PubSubClient client(wifiClient);
 
 SimpleTimer leftSwitchTimer;
 SimpleTimer rightSwitchTimer;
+
+WiFiServer server(23);
+WiFiClient serverClients[MAX_SRV_CLIENTS];
 
 void cancelLeftSwitch() {
   state_left_switch = false;
@@ -160,6 +164,9 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
 
+  server.begin();
+  server.setNoDelay(true);
+
   // Configure swtich pins
   digitalWrite(LEFT_SWITCH, LOW);
   digitalWrite(RIGHT_SWITCH, LOW);
@@ -228,6 +235,45 @@ void setup() {
 void loop() {
   if (!client.connected()) {
     reconnect();
+  }
+
+  uint8_t i;
+  //check if there are any new clients
+  if (server.hasClient()){
+    for(i = 0; i < MAX_SRV_CLIENTS; i++){
+      //find free/disconnected spot
+      if (!serverClients[i] || !serverClients[i].connected()){
+        if(serverClients[i]) serverClients[i].stop();
+        serverClients[i] = server.available();
+        Serial1.print("New client: "); Serial1.print(i);
+        continue;
+      }
+    }
+    //no free/disconnected spot so reject
+    WiFiClient serverClient = server.available();
+    serverClient.stop();
+  }
+  //check clients for data
+  for(i = 0; i < MAX_SRV_CLIENTS; i++){
+    if (serverClients[i] && serverClients[i].connected()){
+      if(serverClients[i].available()){
+        //get data from the telnet client and push it to the UART
+        while(serverClients[i].available()) Serial.write(serverClients[i].read());
+      }
+    }
+  }
+  //check UART for data
+  if(Serial.available()){
+    size_t len = Serial.available();
+    uint8_t sbuf[len];
+    Serial.readBytes(sbuf, len);
+    //push UART data to all connected telnet clients
+    for(i = 0; i < MAX_SRV_CLIENTS; i++){
+      if (serverClients[i] && serverClients[i].connected()){
+        serverClients[i].write(sbuf, len);
+        delay(1);
+      }
+    }
   }
 
   ArduinoOTA.handle();
