@@ -253,6 +253,7 @@ void loop() {
     WiFiClient serverClient = server.available();
     serverClient.stop();
   }
+
   //check clients for data
   for(i = 0; i < MAX_SRV_CLIENTS; i++){
     if (serverClients[i] && serverClients[i].connected()){
@@ -262,7 +263,10 @@ void loop() {
       }
     }
   }
+
   //check UART for data
+  // To echo local debug information (from Serial.println()) place a
+  // jumper wire between TX & RX on the ESP8266.
   if(Serial.available()){
     size_t len = Serial.available();
     uint8_t sbuf[len];
